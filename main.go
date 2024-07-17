@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"lexicon/go-template/module"
+	"lexicon/indonesia-supreme-court-crawler/module"
 
 	"github.com/golang-module/carbon/v2"
 
@@ -41,13 +41,6 @@ func main() {
 
 	module.SetDatabase(pgsqlClient)
 
-	// INITIATE SERVER
-	server, err := NewAppHttpServer(cfg)
+	// Start Application
 
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to start the server")
-	}
-
-	server.setupRoute()
-	server.start()
 }
