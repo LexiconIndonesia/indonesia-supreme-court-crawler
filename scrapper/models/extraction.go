@@ -6,6 +6,8 @@ import (
 	"github.com/oklog/ulid"
 )
 
+var EmptyExtraction Extraction
+
 type Extraction struct {
 	Id            ulid.ULID
 	UrlFrontierId ulid.ULID

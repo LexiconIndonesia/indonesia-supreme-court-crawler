@@ -2,15 +2,13 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"lexicon/indonesia-supreme-court-crawler/common"
-	"lexicon/indonesia-supreme-court-crawler/crawler"
+	"lexicon/indonesia-supreme-court-crawler/scrapper"
 
 	"github.com/golang-module/carbon/v2"
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/gocolly/colly/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
@@ -45,13 +43,11 @@ func main() {
 	common.SetDatabase(pgsqlClient)
 
 	// Start Crawler
-	c := colly.NewCollector(
-		colly.AllowedDomains("putusan3.mahkamahagung.go.id"),
-	)
-	startPage := 1
 
-	startUrl := fmt.Sprintf("https://putusan3.mahkamahagung.go.id/search.html?q=korupsi&page=%d&obf=TANGGAL_PUTUS&obm=desc", startPage)
-	crawler.StartCrawler(c, startUrl, startPage)
+	// crawler.StartCrawler()
 
 	// Start Scrapper
+
+	scrapper.StartScraper()
+
 }

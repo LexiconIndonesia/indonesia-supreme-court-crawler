@@ -17,7 +17,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func StartCrawler(c *colly.Collector, url string, startPage int) {
+func StartCrawler() {
+	c := colly.NewCollector(
+		colly.AllowedDomains("putusan3.mahkamahagung.go.id"),
+	)
+	startPage := 1
+
+	url := fmt.Sprintf("https://putusan3.mahkamahagung.go.id/search.html?q=korupsi&page=%d&obf=TANGGAL_PUTUS&obm=desc", startPage)
 
 	lastPage := getLastPage(url)
 
