@@ -40,7 +40,24 @@ func main() {
 	}
 	defer pgsqlClient.Close()
 
-	common.SetDatabase(pgsqlClient)
+	err = common.SetDatabase(pgsqlClient)
+	if err != nil {
+		log.Error().Err(err).Msg("Unable to set database")
+	}
+
+	// GCS
+	// gcsClient, err := storage.NewClient(ctx)
+	// if err != nil {
+	// 	log.Error().Err(err).Msg("Unable to connect to GCS")
+	// }
+
+	// defer gcsClient.Close()
+
+	// err = common.SetStorageClient(gcsClient)
+	if err != nil {
+		log.Error().Err(err).Msg("Unable to set storage client")
+
+	}
 
 	// Start Crawler
 

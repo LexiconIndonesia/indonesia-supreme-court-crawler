@@ -1,9 +1,12 @@
 package scrapper
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"lexicon/indonesia-supreme-court-crawler/common"
 	crawler_service "lexicon/indonesia-supreme-court-crawler/crawler/services"
 	"lexicon/indonesia-supreme-court-crawler/scrapper/models"
+	"lexicon/indonesia-supreme-court-crawler/scrapper/services"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,6 +19,7 @@ import (
 )
 
 func StartScraper() {
+
 	// Fetch unscrapped url frontier from db
 	list, err := crawler_service.GetUnscrapedUrlFrontier()
 	if err != nil {
@@ -24,7 +28,7 @@ func StartScraper() {
 
 	log.Info().Msg("Unscrapped URLs: " + strconv.Itoa(len(list)))
 
-	var result []models.Metadata
+	var result []models.Extraction
 
 	scrapper, err := buildScrapper(&result)
 
@@ -32,17 +36,36 @@ func StartScraper() {
 		log.Error().Err(err).Msg("Error building scrapper")
 	}
 
-	for _, url := range list {
-		// scrape url
-		scrapper.Visit(url.Url)
-		// save to db
-		// update status
+	scrapper.Visit(list[0].Url)
+	scrapper.Visit(list[1].Url)
 
+	// for _, url := range list {
+	// 	// scrape url
+	// 	scrapper.Visit(url.Url)
+
+	// }
+
+	for _, datum := range result {
+		log.Info().Msg("Uploading PDF to GCS: " + datum.Metadata.PdfUrl)
+
+		// artifact, err := services.HandlePdf(datum.Metadata, datum.Metadata.PdfUrl, datum.Metadata.Id+".pdf")
+		// if err != nil {
+		// 	log.Error().Err(err).Msg("Error handling pdf")
+		// }
+
+		// datum.AddArtifactLink(artifact)
+		err = services.UpsertExtraction(datum)
+		if err != nil {
+			log.Error().Err(err).Msg("Error upserting extraction")
+		}
+		time.Sleep(time.Second * 2)
 	}
 
 }
 
-func buildScrapper(metadata *[]models.Metadata) (*colly.Collector, error) {
+func buildScrapper(extraction *[]models.Extraction) (*colly.Collector, error) {
+	var newExtraction = models.NewExtraction()
+	var newMetadata models.Metadata
 	defendantFirstLayerRegex, err := regexp.Compile(`(?mi).*—\s`)
 	if err != nil {
 		log.Error().Err(err).Msg("Error compiling regex")
@@ -69,8 +92,9 @@ func buildScrapper(metadata *[]models.Metadata) (*colly.Collector, error) {
 		defendantClean := defendantFirstLayerRegex.ReplaceAll([]byte(title), []byte(""))
 
 		defendant := defendantRegex.ReplaceAll([]byte(defendantClean), []byte(""))
-
-		*metadata = append(*metadata, models.Metadata{
+		id := sha256.Sum256([]byte(title))
+		newMetadata = models.Metadata{
+			Id:                       hex.EncodeToString(id[:]),
 			Title:                    title,
 			Defendant:                string(defendant),
 			Number:                   findValue(e, "Nomor"),
@@ -91,7 +115,9 @@ func buildScrapper(metadata *[]models.Metadata) (*colly.Collector, error) {
 			AnnouncementDate:         findValue(e, "Tanggal Dibacakan"),
 			Rule:                     findValue(e, "Kaidah"),
 			Abstract:                 findValue(e, "Abstrak"),
-		})
+		}
+
+		newExtraction.AddSiteContent(e.Text)
 
 		// model = models.Metadata{
 		// 	Title: title,
@@ -99,15 +125,39 @@ func buildScrapper(metadata *[]models.Metadata) (*colly.Collector, error) {
 		// }
 
 	})
+
+	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
+		url := e.Attr("href")
+		var pdfUrl string
+		if strings.Contains(url, "pdf") {
+			pdfUrl = url
+		}
+
+		if pdfUrl != "" {
+			log.Info().Msg("Found PDF: " + pdfUrl)
+			newMetadata.PdfUrl = pdfUrl
+
+		}
+	})
 	c.OnRequest(func(r *colly.Request) {
+		newExtraction.AddRawPageLink(r.URL.String())
 		log.Info().Msg("Visiting: " + r.URL.String())
 	})
+	c.OnScraped(func(r *colly.Response) {
+		frontierId := sha256.Sum256([]byte(r.Request.URL.String()))
+		newExtraction.UrlFrontierId = hex.EncodeToString(frontierId[:])
+		newExtraction.Id = hex.EncodeToString(frontierId[:])
+		log.Info().Msg("Scraped: " + r.Request.URL.String())
+		newExtraction.AddMetadata(newMetadata)
+		*extraction = append(*extraction, newExtraction)
+	})
+
 	return c, nil
 }
 
 func findValue(e *colly.HTMLElement, selector string) string {
 	var value string
-	e.DOM.Find("td").Each(func(i int, s *goquery.Selection) {
+	e.DOM.Find("td.text-right").Each(func(i int, s *goquery.Selection) {
 		if strings.Contains(s.Text(), selector) {
 			value = s.Next().Text()
 		}

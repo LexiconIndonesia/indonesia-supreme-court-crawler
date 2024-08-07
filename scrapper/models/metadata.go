@@ -3,6 +3,7 @@ package models
 var EmptyMetadata Metadata
 
 type Metadata struct {
+	Id                       string `json:"id"`
 	Title                    string `json:"title"`
 	Defendant                string `json:"defendant"`
 	Number                   string `json:"number"`
@@ -23,4 +24,5 @@ type Metadata struct {
 	AnnouncementDate         string `json:"announcement_date"`
 	Rule                     string `json:"rule"`
 	Abstract                 string `json:"abstract"`
+	PdfUrl                   string `json:"pdf_url"`
 }
