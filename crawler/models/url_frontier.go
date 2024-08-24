@@ -39,6 +39,34 @@ func UpsertUrlFrontier(ctx context.Context, tx pgx.Tx, urlFrontier []UrlFrontier
 	return res.Close()
 }
 
+func UpdateUrlFrontiersStatus(ctx context.Context, tx pgx.Tx, urlFrontier []UrlFrontier) error {
+	sql := `UPDATE url_frontier SET status = $1, updated_at = $2 WHERE id = $3`
+	batch := &pgx.Batch{}
+
+	for _, url := range urlFrontier {
+		batch.Queue(sql, url.Status, carbon.Now().ToIso8601String(), url.Id)
+
+	}
+	res := tx.SendBatch(ctx, batch)
+
+	return res.Close()
+}
+
+func UpdateUrlFrontierStatus(ctx context.Context, tx pgx.Tx, id string, status uint8) error {
+	sql := `UPDATE url_frontier SET status = $1, updated_at = $2 WHERE id = $3`
+	res, err := tx.Exec(ctx, sql, status, carbon.Now().ToIso8601String(), id)
+	if err != nil {
+		return err
+	}
+	rowsAffected := res.RowsAffected()
+
+	if rowsAffected == 0 {
+		return nil
+	}
+
+	return nil
+}
+
 func GetUnScrapedUrlFrontier(ctx context.Context, tx pgx.Tx) ([]UrlFrontier, error) {
 	sql := `SELECT * FROM url_frontier WHERE crawler = $1 AND status = $2`
 	rows, err := tx.Query(ctx, sql, common.CRAWLER_NAME, URL_FRONTIER_STATUS_NEW)

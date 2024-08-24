@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"lexicon/indonesia-supreme-court-crawler/common"
 	"lexicon/indonesia-supreme-court-crawler/scrapper/models"
@@ -51,28 +52,33 @@ func uploadToGCS(ctx context.Context, client *storage.Client, bucketName, filepa
 		return "", err
 	}
 	defer r.Close()
-	wc := client.Bucket(bucketName).Object(objectName).NewWriter(ctx)
+	bucket := client.Bucket(bucketName)
+	path := fmt.Sprintf("%s/%s", common.GCS_FOLDER, objectName)
+	obj := bucket.Object(path)
+
+	wc := obj.NewWriter(ctx)
 	if _, err := io.Copy(wc, r); err != nil {
 		return "", err
 	}
 
 	defer wc.Close()
+	defer os.Remove(r.Name())
 
-	return wc.MediaLink, nil
+	return fmt.Sprintf("https://storage.googleapis.com/%s/%s", bucketName, path), nil
 }
 
 func downloadPdf(url string) (string, error) {
 
 	response, err := http.Get(url)
 	if err != nil {
-		log.Error().Err(err).Msg("Error downloading pdf")
+		log.Error().Err(err).Msg("Error downloading pdf: " + url)
 		return "", err
 	}
 
 	defer response.Body.Close()
 
 	// Create Temp File
-	out, err := os.CreateTemp("", "pdf")
+	out, err := os.CreateTemp("", "*.pdf")
 	if err != nil {
 		log.Error().Err(err).Msg("Error creating temp file")
 		return "", err

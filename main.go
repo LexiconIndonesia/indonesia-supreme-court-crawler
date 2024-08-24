@@ -3,14 +3,17 @@ package main
 import (
 	"context"
 	"lexicon/indonesia-supreme-court-crawler/common"
+	"lexicon/indonesia-supreme-court-crawler/crawler"
 	"lexicon/indonesia-supreme-court-crawler/scrapper"
 
 	"github.com/golang-module/carbon/v2"
 
 	"github.com/rs/zerolog/log"
 
+	"cloud.google.com/go/storage"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/spf13/cobra"
 )
 
 func main() {
@@ -21,9 +24,6 @@ func main() {
 	}
 	cfg := defaultConfig()
 	cfg.loadFromEnv()
-
-	ctx := context.Background()
-
 	carbon.SetDefault(carbon.Default{
 		Layout:       carbon.ISO8601Layout,
 		Timezone:     carbon.UTC,
@@ -33,6 +33,8 @@ func main() {
 
 	// INITIATE DATABASES
 	// PGSQL
+	ctx := context.Background()
+
 	pgsqlClient, err := pgxpool.New(ctx, cfg.PgSql.ConnStr())
 
 	if err != nil {
@@ -46,25 +48,60 @@ func main() {
 	}
 
 	// GCS
-	// gcsClient, err := storage.NewClient(ctx)
-	// if err != nil {
-	// 	log.Error().Err(err).Msg("Unable to connect to GCS")
-	// }
+	gcsClient, err := storage.NewClient(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Unable to connect to GCS")
+	}
 
-	// defer gcsClient.Close()
+	defer gcsClient.Close()
 
-	// err = common.SetStorageClient(gcsClient)
+	err = common.SetStorageClient(gcsClient)
 	if err != nil {
 		log.Error().Err(err).Msg("Unable to set storage client")
 
 	}
+	rootCommand := &cobra.Command{
+		Use:   "indonesia-supreme-court-crawler",
+		Short: "Crawl Supreme Court of Indonesia",
+		Long:  "Crawl Supreme Court of Indonesia",
+		Run: func(cmd *cobra.Command, args []string) {
 
-	// Start Crawler
+			log.Info().Msg("Start Crawler")
+			crawler.StartCrawler()
+			log.Info().Msg("Start Scrapper")
+			scrapper.StartScraper()
+			log.Info().Msg("Finish")
+		},
+	}
 
-	// crawler.StartCrawler()
+	rootCommand.AddCommand(crawlerCommand())
+	rootCommand.AddCommand(scrapperCommand())
 
-	// Start Scrapper
+	rootCommand.Execute()
 
-	scrapper.StartScraper()
+}
 
+func crawlerCommand() *cobra.Command {
+
+	return &cobra.Command{
+		Use:   "crawler",
+		Short: "Crawl Supreme Court of Indonesia",
+		Long:  "Crawl Supreme Court of Indonesia",
+		Run: func(cmd *cobra.Command, args []string) {
+
+			crawler.StartCrawler()
+		},
+	}
+}
+
+func scrapperCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "scrapper",
+		Short: "Scrapper Supreme Court of Indonesia",
+		Long:  "Scrapper Supreme Court of Indonesia",
+		Run: func(cmd *cobra.Command, args []string) {
+
+			scrapper.StartScraper()
+		},
+	}
 }

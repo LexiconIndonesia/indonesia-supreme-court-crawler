@@ -2,13 +2,32 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Launch",
+      "name": "Crawler & Scrapper",
       "type": "go",
       "request": "launch",
       "mode": "debug",
       "program": "${workspaceFolder}",
-      "args": [],
-      "showLog": true
+      "args": []
+    },
+    {
+      "name": "Crawler",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}",
+      "args": [
+        "crawler"
+      ]
+    },
+    {
+      "name": "Scrapper",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}",
+      "args": [
+        "scrapper"
+      ]
     }
   ]
 }

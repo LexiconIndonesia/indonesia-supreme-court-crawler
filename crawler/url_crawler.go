@@ -27,7 +27,7 @@ func StartCrawler() {
 
 	lastPage := getLastPage(url)
 
-	totalData := (20 * lastPage) - ((startPage - 1) * 20)
+	totalData := (23 * lastPage) - ((startPage - 1) * 23)
 	log.Info().Msg("Total Data: " + strconv.Itoa(totalData))
 	for i := startPage; i <= lastPage; i++ {
 		details := crawlUrl(c, fmt.Sprintf("https://putusan3.mahkamahagung.go.id/search.html?q=korupsi&page=%d&obf=TANGGAL_PUTUS&obm=desc", i))

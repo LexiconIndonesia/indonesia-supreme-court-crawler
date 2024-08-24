@@ -36,7 +36,9 @@ func (e *Extraction) AddRawPageLink(link string) {
 func (e *Extraction) AddMetadata(metadata Metadata) {
 	e.Metadata = metadata
 }
-
+func (e *Extraction) UpdateUpdatedAt() {
+	e.UpdatedAt = carbon.Now().ToDateTimeStruct()
+}
 func NewExtraction() Extraction {
 	return Extraction{
 		Id:            "",

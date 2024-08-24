@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"lexicon/indonesia-supreme-court-crawler/common"
+	crawler_model "lexicon/indonesia-supreme-court-crawler/crawler/models"
 	crawler_service "lexicon/indonesia-supreme-court-crawler/crawler/services"
 	"lexicon/indonesia-supreme-court-crawler/scrapper/models"
 	"lexicon/indonesia-supreme-court-crawler/scrapper/services"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly/v2"
+	"github.com/gocolly/colly/v2/queue"
 
 	"github.com/rs/zerolog/log"
 )
@@ -28,42 +30,26 @@ func StartScraper() {
 
 	log.Info().Msg("Unscrapped URLs: " + strconv.Itoa(len(list)))
 
-	var result []models.Extraction
+	q, err := queue.New(2, &queue.InMemoryQueueStorage{MaxSize: 10000})
 
-	scrapper, err := buildScrapper(&result)
+	if err != nil {
+		log.Error().Err(err).Msg("Error creating queue")
+	}
 
+	scrapper, err := buildScrapper(q)
 	if err != nil {
 		log.Error().Err(err).Msg("Error building scrapper")
 	}
 
-	scrapper.Visit(list[0].Url)
-	scrapper.Visit(list[1].Url)
-
-	// for _, url := range list {
-	// 	// scrape url
-	// 	scrapper.Visit(url.Url)
-
-	// }
-
-	for _, datum := range result {
-		log.Info().Msg("Uploading PDF to GCS: " + datum.Metadata.PdfUrl)
-
-		// artifact, err := services.HandlePdf(datum.Metadata, datum.Metadata.PdfUrl, datum.Metadata.Id+".pdf")
-		// if err != nil {
-		// 	log.Error().Err(err).Msg("Error handling pdf")
-		// }
-
-		// datum.AddArtifactLink(artifact)
-		err = services.UpsertExtraction(datum)
-		if err != nil {
-			log.Error().Err(err).Msg("Error upserting extraction")
-		}
-		time.Sleep(time.Second * 2)
+	for _, url := range list {
+		// scrape url
+		q.AddURL(url.Url)
 	}
-
+	q.Run(scrapper)
+	scrapper.Wait()
 }
 
-func buildScrapper(extraction *[]models.Extraction) (*colly.Collector, error) {
+func buildScrapper(q *queue.Queue) (*colly.Collector, error) {
 	var newExtraction = models.NewExtraction()
 	var newMetadata models.Metadata
 	defendantFirstLayerRegex, err := regexp.Compile(`(?mi).*—\s`)
@@ -76,9 +62,16 @@ func buildScrapper(extraction *[]models.Extraction) (*colly.Collector, error) {
 		log.Error().Err(err).Msg("Error compiling regex")
 		return nil, err
 	}
+	secondDefendantRegex, err := regexp.Compile(`^(.*):\s?(.*)$`)
+	if err != nil {
+		log.Error().Err(err).Msg("Error compiling regex")
+		return nil, err
+	}
 
 	c := colly.NewCollector(
 		colly.AllowedDomains(common.CRAWLER_DOMAIN),
+		// colly.Async(true),
+		colly.MaxDepth(1),
 	)
 	c.Limit(&colly.LimitRule{
 		DomainGlob:  common.CRAWLER_DOMAIN,
@@ -87,16 +80,21 @@ func buildScrapper(extraction *[]models.Extraction) (*colly.Collector, error) {
 		RandomDelay: time.Second * 2,
 	})
 
+	c.SetRequestTimeout(time.Minute * 2)
+
 	c.OnHTML("table.table", func(e *colly.HTMLElement) {
 		title := e.ChildText("h2")
 		defendantClean := defendantFirstLayerRegex.ReplaceAll([]byte(title), []byte(""))
-
 		defendant := defendantRegex.ReplaceAll([]byte(defendantClean), []byte(""))
+		usedDefendant := string(defendant)
+		if match := secondDefendantRegex.FindStringSubmatch(string(usedDefendant)); match != nil {
+			usedDefendant = match[2]
+		}
 		id := sha256.Sum256([]byte(title))
 		newMetadata = models.Metadata{
 			Id:                       hex.EncodeToString(id[:]),
 			Title:                    title,
-			Defendant:                string(defendant),
+			Defendant:                string(usedDefendant),
 			Number:                   findValue(e, "Nomor"),
 			ProcessLevel:             findValue(e, "Tingkat Proses"),
 			Classification:           findValue(e, "Klasifikasi"),
@@ -142,14 +140,38 @@ func buildScrapper(extraction *[]models.Extraction) (*colly.Collector, error) {
 	c.OnRequest(func(r *colly.Request) {
 		newExtraction.AddRawPageLink(r.URL.String())
 		log.Info().Msg("Visiting: " + r.URL.String())
+		q.AddRequest(r)
 	})
 	c.OnScraped(func(r *colly.Response) {
 		frontierId := sha256.Sum256([]byte(r.Request.URL.String()))
 		newExtraction.UrlFrontierId = hex.EncodeToString(frontierId[:])
 		newExtraction.Id = hex.EncodeToString(frontierId[:])
-		log.Info().Msg("Scraped: " + r.Request.URL.String())
 		newExtraction.AddMetadata(newMetadata)
-		*extraction = append(*extraction, newExtraction)
+		newExtraction.UpdateUpdatedAt()
+
+		if newExtraction.Metadata.PdfUrl != "" {
+			log.Info().Msg("Uploading PDF to GCS: " + newExtraction.Metadata.PdfUrl)
+
+			artifact, err := services.HandlePdf(newExtraction.Metadata, newExtraction.Metadata.PdfUrl, newExtraction.Metadata.Id+".pdf")
+			if err != nil {
+				log.Error().Err(err).Msg("Error handling pdf")
+			}
+
+			newExtraction.AddArtifactLink(artifact)
+		}
+		log.Info().Msg("Upserting extraction: " + newExtraction.Id)
+		err = services.UpsertExtraction(newExtraction)
+		if err != nil {
+			log.Error().Err(err).Msg("Error upserting extraction")
+		}
+		log.Info().Msg("Updating url frontier status: " + newExtraction.UrlFrontierId)
+		err = crawler_service.UpdateUrlFrontierStatus(newExtraction.UrlFrontierId, crawler_model.URL_FRONTIER_STATUS_CRAWLED)
+		if err != nil {
+			log.Error().Err(err).Msg("Error updating url frontier status")
+		}
+
+		log.Info().Msg("Scraped: " + r.Request.URL.String())
+
 	})
 
 	return c, nil
@@ -162,5 +184,21 @@ func findValue(e *colly.HTMLElement, selector string) string {
 			value = s.Next().Text()
 		}
 	})
-	return strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(value), "\n", " "), "—", "")
+
+	value = strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(value), "\n", " "), "—", "")
+	if selector == "Klasifikasi" {
+		// 1. Remove duplicate \t
+		re := regexp.MustCompile(`\t+`)
+		singleTab := re.ReplaceAllString(value, "\t")
+
+		// 2. Change \t to hyphen
+		hyphenated := strings.ReplaceAll(singleTab, "\t", "-")
+
+		// 3. Remove duplicate spaces
+		reSpace := regexp.MustCompile(`\s+`)
+		value = reSpace.ReplaceAllString(hyphenated, " ")
+
+	}
+
+	return value
 }

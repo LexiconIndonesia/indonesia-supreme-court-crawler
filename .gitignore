@@ -145,3 +145,4 @@ db/*
 
 bin/*
 __output/*
+lexicon-bo-crawler-service-account.json

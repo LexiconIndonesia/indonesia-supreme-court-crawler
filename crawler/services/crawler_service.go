@@ -24,6 +24,23 @@ func UpsertUrl(urlFrontier []models.UrlFrontier) error {
 	return nil
 }
 
+func UpdateUrlFrontierStatus(frontier string, status uint8) error {
+
+	ctx := context.Background()
+	tx, err := common.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = models.UpdateUrlFrontierStatus(ctx, tx, frontier, status)
+	if err != nil {
+		return err
+	}
+	tx.Commit(ctx)
+
+	return nil
+}
+
 func GetUnscrapedUrlFrontier() ([]models.UrlFrontier, error) {
 
 	ctx := context.Background()
