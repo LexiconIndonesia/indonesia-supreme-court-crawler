@@ -18,9 +18,7 @@ import (
 )
 
 func StartCrawler() {
-	c := colly.NewCollector(
-		colly.AllowedDomains("putusan3.mahkamahagung.go.id"),
-	)
+
 	startPage := 1
 
 	url := fmt.Sprintf("https://putusan3.mahkamahagung.go.id/search.html?q=korupsi&page=%d&obf=TANGGAL_PUTUS&obm=desc", startPage)
@@ -30,7 +28,7 @@ func StartCrawler() {
 	totalData := (23 * lastPage) - ((startPage - 1) * 23)
 	log.Info().Msg("Total Data: " + strconv.Itoa(totalData))
 	for i := startPage; i <= lastPage; i++ {
-		details := crawlUrl(c, fmt.Sprintf("https://putusan3.mahkamahagung.go.id/search.html?q=korupsi&page=%d&obf=TANGGAL_PUTUS&obm=desc", i))
+		details := crawlUrl(fmt.Sprintf("https://putusan3.mahkamahagung.go.id/search.html?q=korupsi&page=%d&obf=TANGGAL_PUTUS&obm=desc", i))
 
 		log.Info().Msg("Details: " + strconv.Itoa(len(details)))
 		allDetails := []models.UrlFrontier{}
@@ -88,9 +86,12 @@ func getLastPage(url string) int {
 	return lastPage
 
 }
-func crawlUrl(c *colly.Collector, url string) []string {
+func crawlUrl(url string) []string {
 	log.Info().Msg("Crawling URL: " + url)
-
+	c := colly.NewCollector(
+		colly.AllowedDomains("putusan3.mahkamahagung.go.id"),
+	)
+	c.SetRequestTimeout(time.Minute * 2)
 	var detailUrls []string
 	// find current page links
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {

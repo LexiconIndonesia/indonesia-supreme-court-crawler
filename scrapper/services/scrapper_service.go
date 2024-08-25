@@ -25,6 +25,10 @@ func HandlePdf(metadata models.Metadata, pdfUrl, pdfName string) (string, error)
 		log.Error().Err(err).Msg("Error uploading pdf to gcs")
 	}
 
+	if err := os.Remove(pdfPath); err != nil {
+		log.Error().Err(err).Msg("Error removing pdf file")
+	}
+
 	return path, nil
 }
 
@@ -62,7 +66,6 @@ func uploadToGCS(ctx context.Context, client *storage.Client, bucketName, filepa
 	}
 
 	defer wc.Close()
-	defer os.Remove(r.Name())
 
 	return fmt.Sprintf("https://storage.googleapis.com/%s/%s", bucketName, path), nil
 }
