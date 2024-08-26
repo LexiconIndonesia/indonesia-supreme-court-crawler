@@ -75,7 +75,7 @@ func buildScrapper(q *queue.Queue) (*colly.Collector, error) {
 	)
 	c.Limit(&colly.LimitRule{
 		DomainGlob:  common.CRAWLER_DOMAIN,
-		Parallelism: 10,
+		Parallelism: 2,
 		Delay:       time.Second * 2,
 		RandomDelay: time.Second * 2,
 	})
