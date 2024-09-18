@@ -21,7 +21,6 @@ import (
 )
 
 func StartScraper() {
-
 	// Fetch unscrapped url frontier from db
 	list, err := crawler_service.GetUnscrapedUrlFrontier()
 	if err != nil {
@@ -31,12 +30,11 @@ func StartScraper() {
 	log.Info().Msg("Unscrapped URLs: " + strconv.Itoa(len(list)))
 
 	q, err := queue.New(2, &queue.InMemoryQueueStorage{MaxSize: 10000})
-
 	if err != nil {
 		log.Error().Err(err).Msg("Error creating queue")
 	}
 
-	scrapper, err := buildScrapper(q)
+	scrapper, err := buildScrapper()
 	if err != nil {
 		log.Error().Err(err).Msg("Error building scrapper")
 	}
@@ -49,8 +47,8 @@ func StartScraper() {
 	scrapper.Wait()
 }
 
-func buildScrapper(q *queue.Queue) (*colly.Collector, error) {
-	var newExtraction = models.NewExtraction()
+func buildScrapper() (*colly.Collector, error) {
+	newExtraction := models.NewExtraction()
 	var newMetadata models.Metadata
 	defendantFirstLayerRegex, err := regexp.Compile(`(?mi).*—\s`)
 	if err != nil {
@@ -75,7 +73,6 @@ func buildScrapper(q *queue.Queue) (*colly.Collector, error) {
 	)
 	c.Limit(&colly.LimitRule{
 		DomainGlob:  common.CRAWLER_DOMAIN,
-		Parallelism: 2,
 		Delay:       time.Second * 2,
 		RandomDelay: time.Second * 2,
 	})
@@ -121,7 +118,6 @@ func buildScrapper(q *queue.Queue) (*colly.Collector, error) {
 		// 	Title: title,
 		// 	Defendant: string(defendant),
 		// }
-
 	})
 
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
@@ -138,14 +134,13 @@ func buildScrapper(q *queue.Queue) (*colly.Collector, error) {
 		}
 	})
 	c.OnRequest(func(r *colly.Request) {
-		newExtraction.AddRawPageLink(r.URL.String())
 		log.Info().Msg("Visiting: " + r.URL.String())
-		q.AddRequest(r)
 	})
 	c.OnScraped(func(r *colly.Response) {
 		frontierId := sha256.Sum256([]byte(r.Request.URL.String()))
 		newExtraction.UrlFrontierId = hex.EncodeToString(frontierId[:])
 		newExtraction.Id = hex.EncodeToString(frontierId[:])
+		newExtraction.AddRawPageLink(r.Request.URL.String())
 		newExtraction.AddMetadata(newMetadata)
 		newExtraction.UpdateUpdatedAt()
 
@@ -171,7 +166,6 @@ func buildScrapper(q *queue.Queue) (*colly.Collector, error) {
 		}
 
 		log.Info().Msg("Scraped: " + r.Request.URL.String())
-
 	})
 
 	return c, nil
