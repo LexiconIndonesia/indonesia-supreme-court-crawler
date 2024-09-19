@@ -29,7 +29,8 @@ func StartScraper() {
 
 	log.Info().Msg("Unscrapped URLs: " + strconv.Itoa(len(list)))
 
-	q, err := queue.New(2, &queue.InMemoryQueueStorage{MaxSize: 10000})
+	q, err := queue.New(1, &queue.InMemoryQueueStorage{MaxSize: 100000})
+
 	if err != nil {
 		log.Error().Err(err).Msg("Error creating queue")
 	}
