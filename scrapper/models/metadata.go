@@ -1,8 +1,8 @@
 package models
 
-var EmptyMetadata Metadata
+var EmptyMetadata ExtractionMetadata
 
-type Metadata struct {
+type ExtractionMetadata struct {
 	Id                       string `json:"id"`
 	Title                    string `json:"title"`
 	Defendant                string `json:"defendant"`

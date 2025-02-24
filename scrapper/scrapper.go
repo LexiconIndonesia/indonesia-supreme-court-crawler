@@ -1,11 +1,13 @@
 package scrapper
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"lexicon/indonesia-supreme-court-crawler/common"
 	crawler_model "lexicon/indonesia-supreme-court-crawler/crawler/models"
 	crawler_service "lexicon/indonesia-supreme-court-crawler/crawler/services"
+	"lexicon/indonesia-supreme-court-crawler/repository"
 	"lexicon/indonesia-supreme-court-crawler/scrapper/models"
 	"lexicon/indonesia-supreme-court-crawler/scrapper/services"
 	"regexp"
@@ -16,13 +18,13 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly/v2"
 	"github.com/gocolly/colly/v2/queue"
-
 	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 )
 
 func StartScraper() {
 	// Fetch unscrapped url frontier from db
-	list, err := crawler_service.GetUnscrapedUrlFrontier()
+	list, err := crawler_service.GetUnscrappedUrlFrontiers(context.Background(), 100)
 	if err != nil {
 		log.Error().Err(err).Msg("Error fetching unscrapped url frontier")
 	}
@@ -49,8 +51,8 @@ func StartScraper() {
 }
 
 func buildScrapper() (*colly.Collector, error) {
-	newExtraction := models.NewExtraction()
-	var newMetadata models.Metadata
+	newExtraction := repository.Extraction{}
+	var newMetadata models.ExtractionMetadata
 	defendantFirstLayerRegex, err := regexp.Compile(`(?mi).*—\s`)
 	if err != nil {
 		log.Error().Err(err).Msg("Error compiling regex")
@@ -89,7 +91,7 @@ func buildScrapper() (*colly.Collector, error) {
 			usedDefendant = match[2]
 		}
 		id := sha256.Sum256([]byte(title))
-		newMetadata = models.Metadata{
+		newMetadata = models.ExtractionMetadata{
 			Id:                       hex.EncodeToString(id[:]),
 			Title:                    title,
 			Defendant:                string(usedDefendant),
@@ -113,7 +115,7 @@ func buildScrapper() (*colly.Collector, error) {
 			Abstract:                 findValue(e, "Abstrak"),
 		}
 
-		newExtraction.AddSiteContent(e.Text)
+		newExtraction.SiteContent = &e.Text
 
 		// model = models.Metadata{
 		// 	Title: title,
@@ -138,30 +140,30 @@ func buildScrapper() (*colly.Collector, error) {
 		log.Info().Msg("Visiting: " + r.URL.String())
 	})
 	c.OnScraped(func(r *colly.Response) {
-		frontierId := sha256.Sum256([]byte(r.Request.URL.String()))
-		newExtraction.UrlFrontierId = hex.EncodeToString(frontierId[:])
-		newExtraction.Id = hex.EncodeToString(frontierId[:])
-		newExtraction.AddRawPageLink(r.Request.URL.String())
-		newExtraction.AddMetadata(newMetadata)
-		newExtraction.UpdateUpdatedAt()
+		requestUrl := r.Request.URL.String()
+		frontierId := sha256.Sum256([]byte(requestUrl))
+		newExtraction.UrlFrontierID = hex.EncodeToString(frontierId[:])
+		newExtraction.ID = hex.EncodeToString(frontierId[:])
+		newExtraction.RawPageLink = &requestUrl
+		newExtraction.Metadata = newMetadata
 
 		if newExtraction.Metadata.PdfUrl != "" {
 			log.Info().Msg("Uploading PDF to GCS: " + newExtraction.Metadata.PdfUrl)
 
-			artifact, err := services.HandlePdf(newExtraction.Metadata, newExtraction.Metadata.PdfUrl, newExtraction.Metadata.Id+".pdf")
+			artifact, err := services.HandlePdf(context.Background(), newExtraction.Metadata.Id+".pdf", newExtraction.Metadata.PdfUrl)
 			if err != nil {
 				log.Error().Err(err).Msg("Error handling pdf")
 			}
 
-			newExtraction.AddArtifactLink(artifact)
+			newExtraction.ArtifactLink = &artifact.B
 		}
-		log.Info().Msg("Upserting extraction: " + newExtraction.Id)
-		err = services.UpsertExtraction(newExtraction)
+		log.Info().Msg("Upserting extraction: " + newExtraction.ID)
+		err = services.UpsertExtraction(context.Background(), []repository.Extraction{newExtraction})
 		if err != nil {
 			log.Error().Err(err).Msg("Error upserting extraction")
 		}
-		log.Info().Msg("Updating url frontier status: " + newExtraction.UrlFrontierId)
-		err = crawler_service.UpdateUrlFrontierStatus(newExtraction.UrlFrontierId, crawler_model.URL_FRONTIER_STATUS_CRAWLED)
+		log.Info().Msg("Updating url frontier status: " + newExtraction.UrlFrontierID)
+		err = crawler_service.UpdateFrontierStatuses(context.Background(), []lo.Tuple2[string, int16]{{newExtraction.UrlFrontierID, int16(crawler_model.URL_FRONTIER_STATUS_CRAWLED)}})
 		if err != nil {
 			log.Error().Err(err).Msg("Error updating url frontier status")
 		}

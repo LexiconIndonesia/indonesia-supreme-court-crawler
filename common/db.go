@@ -2,6 +2,7 @@ package common
 
 import (
 	"errors"
+	"lexicon/indonesia-supreme-court-crawler/repository"
 
 	"cloud.google.com/go/storage"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -10,6 +11,7 @@ import (
 var (
 	Pool          *pgxpool.Pool
 	StorageClient *storage.Client
+	Query         *repository.Queries
 )
 
 func SetDatabase(newPool *pgxpool.Pool) error {
@@ -26,5 +28,13 @@ func SetStorageClient(newClient *storage.Client) error {
 		return errors.New("cannot assign nil storage client")
 	}
 	StorageClient = newClient
+	return nil
+}
+
+func SetQuery(newQuery *repository.Queries) error {
+	if newQuery == nil {
+		return errors.New("cannot assign nil query")
+	}
+	Query = newQuery
 	return nil
 }

@@ -1,17 +1,17 @@
 package crawler
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"lexicon/indonesia-supreme-court-crawler/common"
 	"lexicon/indonesia-supreme-court-crawler/crawler/models"
 	"lexicon/indonesia-supreme-court-crawler/crawler/services"
+	"lexicon/indonesia-supreme-court-crawler/repository"
 	"regexp"
 	"strconv"
 	"time"
-
-	"github.com/golang-module/carbon/v2"
 
 	"github.com/gocolly/colly/v2"
 	"github.com/rs/zerolog/log"
@@ -31,24 +31,24 @@ func StartCrawler() {
 		details := crawlUrl(fmt.Sprintf("https://putusan3.mahkamahagung.go.id/search.html?q=korupsi&page=%d&obf=TANGGAL_PUTUS&obm=desc", i))
 
 		log.Info().Msg("Details: " + strconv.Itoa(len(details)))
-		allDetails := []models.UrlFrontier{}
+		allDetails := []repository.UrlFrontier{}
 
 		for _, detail := range details {
 
 			id := sha256.Sum256([]byte(detail))
-			currentTime := carbon.Now().ToDateTimeStruct()
-			allDetails = append(allDetails, models.UrlFrontier{
-				Id:        hex.EncodeToString(id[:]),
+			currentTime := time.Now()
+			allDetails = append(allDetails, repository.UrlFrontier{
+				ID:        hex.EncodeToString(id[:]),
 				Url:       detail,
 				Domain:    common.CRAWLER_DOMAIN,
 				Crawler:   common.CRAWLER_NAME,
-				Status:    models.URL_FRONTIER_STATUS_NEW,
+				Status:    int16(models.URL_FRONTIER_STATUS_NEW),
 				CreatedAt: currentTime,
 				UpdatedAt: currentTime,
 			})
 		}
 
-		err := services.UpsertUrl(allDetails)
+		err := services.UpsertUrl(context.Background(), allDetails)
 		if err != nil {
 			log.Error().Err(err).Msg("Error upserting url")
 		}
